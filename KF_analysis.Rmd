@@ -1,0 +1,141 @@
+---
+title: "Knowledge Fight Analysis"
+author: "Deirdre Toher"
+date: "2022-10-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,comment=NA)
+```
+
+```{r, echo=FALSE, warning=FALSE,message=FALSE}
+library(quanteda)
+library(quanteda.textplots)
+library(quanteda.textstats)
+
+library(quanteda.textmodels)
+library(ggplot2)
+
+library(xml2)
+library(tidyr)
+library(tibble)
+library(XML)
+library(lubridate)
+library(RColorBrewer)
+```
+```{r, echo=FALSE, warning=FALSE,message=FALSE}
+xml_url<-"https://feeds.libsyn.com/92106/rss"
+
+
+KnowledgeFight<-tidyRSS::tidyfeed(xml_url)
+names(KnowledgeFight)
+Description<-KnowledgeFight$item_description
+D1<-Description
+Titles<-KnowledgeFight$item_title
+KF_episodes<-corpus(D1)
+
+summary(KF_episodes,n=5)
+temp<-tokens(KF_episodes,remove_punct = TRUE)
+
+temp<-temp|>
+  tokens_remove(stopwords("en"))
+
+
+KF_dfm <-temp|>dfm()
+mylsa <- textmodel_lsa(KF_dfm)
+
+
+(topfeatures(KF_dfm,n=80))
+names(topfeatures(KF_dfm,n=20))
+```
+
+```{r, echo=FALSE}
+set.seed(2362)
+textplot_wordcloud(KF_dfm,min_count=6,random_order = FALSE, rotation = 0.25,
+                   color = RColorBrewer::brewer.pal(8, "Dark2"))
+```
+
+```{r, echo=FALSE}
+features_dfm_KF <- textstat_frequency(KF_dfm, n = 20)
+features_dfm_KF$feature <- with(features_dfm_KF, reorder(feature, frequency))
+
+ggplot(features_dfm_KF, aes(y = feature, x = frequency)) +
+  geom_point()+
+  expand_limits(x=5)+
+  labs(x="Frequency",
+       y="Token",
+       title="Knowledge Fight")+
+  theme_minimal()
+```  
+  
+  
+```{r, echo=FALSE}
+KFtokens_2ngrams<-temp|>
+  tokens_ngrams(n=1:2)
+
+
+KF_TwoGrams_dfm<-KFtokens_2ngrams|>
+  dfm()
+
+KF_features_TwoGrams <- textstat_frequency(KF_TwoGrams_dfm, n = 20)
+KF_features_TwoGrams$feature <- with(KF_features_TwoGrams, reorder(feature, frequency))
+
+ggplot(KF_features_TwoGrams, aes(y = feature, x = frequency)) +
+  geom_point()+
+  labs(x="Frequency",
+       y="Token (1:2 ngrams)",
+       title="Knowledge Fight")+
+  theme_minimal()+
+  theme(axis.text.y = element_text(size = 6))
+```
+
+
+## extra bit
+
+```{r, echo=FALSE}
+KF_data <- read_xml(xml_url) |> as_list()
+#KF_data
+
+KF_tb<- as_tibble(KF_data)|>
+  unnest_longer('rss')
+
+From<-min(which(KF_tb$rss_id=="item"))
+To<-max(which(KF_tb$rss_id=="item"))
+
+
+KnowledgeFight$duration<-NA
+
+#view(KnowledgeFight)
+Nepisodes<-nrow(KnowledgeFight)
+
+for(i in 1:Nepisodes){
+  j<-i+From-1
+  KnowledgeFight$duration[i]<-KF_tb[[1]][[j]]$duration[[1]]
+}
+v1<-hms(KnowledgeFight$duration)
+v1[is.na(v1)]<-ms(KnowledgeFight$duration[is.na(v1)])
+
+
+KnowledgeFight$runtime<-
+  as.duration(v1)
+KnowledgeFight$runtimeMinutes<-
+  as.numeric(KnowledgeFight$runtime)/60
+summary(KnowledgeFight$runtime)
+
+summary(KnowledgeFight$item_pub_date)
+
+ggplot(KnowledgeFight,
+       aes(x=item_pub_date,y=runtimeMinutes))+
+  geom_point(alpha=.9)+expand_limits(y=0)+
+  labs(x="Episode Release Date",
+       y="Episode Runtime\n(minutes)",
+       alt = "Scatter plot of Knowledge Fight release date on the x-axes and of the runtime in minutes on the y-axes. The runtime varies from about 20 minutes up to approximately 110 minutes. These are adjacent episodes.",
+       title="Knowledge Fight episode\nruntime variation")+
+  theme_minimal()
+
+summary(KnowledgeFight$runtimeMinutes[year(KnowledgeFight$item_pub_date)==2022
+])
+
+sum(KnowledgeFight$runtimeMinutes)
+```
